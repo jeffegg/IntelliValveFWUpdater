@@ -36,12 +36,14 @@ class intel_hex_reader:
     def convert_to_64_byte_lines(self):
         new_line = {"byte_count": 0x40, "address": None, "data": "", "checksum": None}
         for line in self._parse_file_list:
+            print(line)
             if new_line["address"] is None:
                 if (int(line["address"], 16) % 0x40) == 0:
                     new_line["address"] = line["address"]
                 else:
-                    new_line["address"] = '{0:0{1}X}'.format(int(line["address"], 16) % 0x40, 4)
-                    needed_0_bytes = (int(line["address"], 16) - (int(line["address"], 16) % 0x40))
+                    alinged_address = int(line["address"], 16) - (int(line["address"], 16) % 0x40)
+                    new_line["address"] = '{0:0{1}X}'.format(alinged_address, 4)
+                    needed_0_bytes = int(line["address"], 16) % 0x40
                     new_line["data"] = "00" * needed_0_bytes
             else:
                 if ((int(line["address"], 16) - int(new_line["address"], 16)) / 0x40) > 1:

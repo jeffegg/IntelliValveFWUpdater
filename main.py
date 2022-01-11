@@ -8,7 +8,7 @@ reload(intel_hex_reader)
 
 class FWUpdater:
     def __init__(self):
-        self._fw_update_filename = ""
+        self._fw_update_filename = "test.hex"
         self._full_hex_file = None
         self._start_of_frame = bytearray([0xFF, 0x0, 0xFF])
         self._start_of_header = bytearray([0xA5, 0x3F])
@@ -29,11 +29,7 @@ class FWUpdater:
     def fw_update_filename(self, value):
         self._fw_update_filename = value
 
-    def read_fw_update_file(self):
-        with open(self._fw_update_filename, 'rb') as file_pointer:
-            self._full_hex_file = file_pointer.read()
-
-    def calculate_append_checksum(self, bytes_to_check: bytearray):
+    def _calculate_and_append_checksum(self, bytes_to_check: bytearray):
         if bytes_to_check[0:3] != self._start_of_frame:
             raise BufferError("This doesn't seem to be a valid packet")
         check_sum = 0
@@ -43,15 +39,11 @@ class FWUpdater:
         bytes_to_check.append((check_sum >> 0x8) & 0xFF)
         bytes_to_check.append((check_sum >> 0x0) & 0xFF)
 
-    def write_serial(self):
-        ser = serial.Serial(self._rs485_loc, 9600)
-        ser.write(self._full_hex_file[0:64])
-
     def reset_valve(self, valve_id: bytearray):
         address = self.found_valves[valve_id]
         new_reset_cmd = self._reset_cmd.copy()
-        new_reset_cmd[5] = address
-        self.calculate_append_checksum(new_reset_cmd)
+        new_reset_cmd[5] = address # Fix up address
+        self._calculate_and_append_checksum(new_reset_cmd)
         print("Resetting valve 0x" + valve_id.hex() + " at address " + hex(address))
         ser = serial.Serial(self._rs485_loc, 9600)
         ser.write(new_reset_cmd)
@@ -77,7 +69,7 @@ class FWUpdater:
         ser = serial.Serial(self._rs485_loc, 9600)
 
         for valve_id in self.found_valves.keys():
-            ihr = intel_hex_reader.intel_hex_reader("test.hex")
+            ihr = intel_hex_reader.intel_hex_reader(self._fw_update_filename)
             ihr.open()
             ihr.convert_to_64_byte_lines()
             for line in ihr._parse_64_byte_list:
@@ -91,7 +83,7 @@ class FWUpdater:
                 print(data)
                 fw_packet[8] = 2 + 1 + 2 + line["byte_count"]
                 fw_packet += bytearray.fromhex(data)
-                self.calculate_append_checksum(fw_packet)
+                self._calculate_and_append_checksum(fw_packet)
                 ser.write(fw_packet)
                 time.sleep(1)
         ser.close()
@@ -101,7 +93,7 @@ class FWUpdater:
         time.sleep(1)
         ser = serial.Serial(self._rs485_loc, 9600)
         fw_packet = bytearray([0xFF, 0x0, 0xFF, 0xA5, 0x3F, 0xC, 0xF, 0xF5, 0x2, 0x0, 0x0])
-        self.calculate_append_checksum(fw_packet)
+        self._calculate_and_append_checksum(fw_packet)
         ser.write(fw_packet)
         ser.close()
 
@@ -139,7 +131,7 @@ class FWUpdater:
     def cause_valve_address_revert(self):
         ser = serial.Serial(self._rs485_loc, 9600)
         address_reset = bytearray([0xFF, 0x0, 0xFF, 0xA5, 0x3F, 0xC, 0x10, 0x51, 0x1, 0x1])
-        self.calculate_append_checksum(address_reset)
+        self._calculate_and_append_checksum(address_reset)
         ser.write(address_reset)
         ser.close()
 
@@ -163,7 +155,7 @@ class FWUpdater:
             change_address_packet.append(address_to_setup)
             change_address_packet.append(0x1)
             change_address_packet += valve_id #.to_bytes(6, 'big')
-            self.calculate_append_checksum(change_address_packet)
+            self._calculate_and_append_checksum(change_address_packet)
             ser.write(change_address_packet)
             #print(ser.read(12))
             print(hex(address_to_setup) + "     0x" + str(valve_id.hex()))
@@ -183,7 +175,7 @@ class FWUpdater:
             change_address_packet.append(0xF0)
             change_address_packet.append(1)
             change_address_packet.append(0)
-            self.calculate_append_checksum(change_address_packet)
+            self._calculate_and_append_checksum(change_address_packet)
             ser.write(change_address_packet)
             valve_info = ser.read(29)
 
